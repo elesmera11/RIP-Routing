@@ -99,6 +99,11 @@ def process_output_ports(third_line):
 #------------------------------------------------------------------------------#
 
 
+def print_header():
+    print("Routing table for router {0}".format(router_id))
+    print("|dest router|:|first hop| port |metric|garbage flag|garbage time|drop time|")
+    
+
 #------------------------------------------------------------------------------#
 # Daemon creation and sockets
 #------------------------------------------------------------------------------#
