@@ -15,28 +15,28 @@ class Route_Entries:
         route = Route(dst, nxt_hop, distance)
         return route
     
-    def set_route_change_flag(route):
+    def set_route_change_flag():
         route.route_change_flag = True
         
-    def clear_route_change_flag(route):
+    def clear_route_change_flag():
         route.route_change_flag = False
         
-    def set_time_out(route):
+    def set_time_out():
         route.time_out = 30
         
-    def clear_time_out(route):
+    def clear_time_out():
         route.time_out = 0
         
-    def set_garbage_collection(route):
+    def set_garbage_collection():
         route.garbage_collection = 120
         
-    def clear_garbage_collection(route):
+    def clear_garbage_collection():
         route.garbage_collection = 0
         
-    def update_metrics(route, new_metric):
+    def update_metrics(new_metric):
         route.metric = new_metric
     
-    def update_next_hop(route, new_hop):
+    def update_next_hop(new_hop):
         route.nxt_hop_add = new_hop
         
     
