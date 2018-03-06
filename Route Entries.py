@@ -15,6 +15,9 @@ class Route_Entries:
         route = Route(dst, nxt_hop, distance)
         return route
     
+    def get_route():
+        return dst_add
+    
     def set_route_change_flag():
         route.route_change_flag = True
         

@@ -23,7 +23,7 @@ def delete_route(route):
     entries -= 1
     
 # Checks if route already in routing table
-def check_route(route, routing_table):
+def check_route(route):
     if route in routing_table:
         return True
     else:
