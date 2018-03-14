@@ -1,8 +1,10 @@
 import select
 import threading
+import time
 
 HOST = "127.0.0.1"
 INFINITY = 16
+INVALID = 16
 TIME_BLOCK = 30
 PERIODIC_UPDATE = 30 / TIME_BLOCK
 TIME_OUT = 180 / TIME_BLOCK
@@ -95,45 +97,58 @@ class Router:
                     if rt_time_out > TIME_OUT:
                         rt_metric = 16
                         rt_rfc = 1
-                        rt_gbg_coll = init_gbg_coll
+                        rt_gbg_coll = time.time()
+                        init_gbg_coll()
                         trigger_update()
                     elif nxt_hop == rt_nxt_hop and new_metric < 16:
                         if new_metric == rt_metric:
-                            reset_time_out()
+                            rt_time_out = time.time()
+                            init_time_out()
                         else:
                             rt_metric = new_metric
                     elif nxt_hop == rt_nxt_hop and new_metric == 16:
                         rt_metric = new_metric
                         rt_rfc = 1
-                        rt_time_out = init_time_out()
-                        rt_gbg_coll = init_gbg_coll()
+                        rt_time_out = time.time()
+                        init_time_out()
+                        rt_gbg_coll = time.time()
+                        init_gbg_coll()
                         trigger_update()
                     elif nxt_hop != rt_nxt_hop and new_metric < rt_metric:
                         rt_nxt_hop = nxt_hop
                         rt_metric = new_metric
-                        rt_time_out = init_time_out()
+                        rt_time_out = time.time()
+                        init_time_out()
                 else:
-                    if rt_time_out > GARBAGE_COLLECTION:
-                        del rt_tbl[dst]
-                    elif new_metric < 16:
+                    if new_metric < 16:
                         rt_nxt_hop = nxt_hop
                         rt_metric = new_metric
-                        rt_time_out = init_time_out()
-                        rt_gbg_coll = clear_gbg_coll()
+                        rt_time_out = time.time()
+                        init_time_out()
+                        rt_gbg_coll = 0
         print_routing_table()
         return
-                
-    def init_time_out(self,dst):
-        thread = 
-        
-    def reset_time_out(self,dst):
     
+    def check_time_out(self, dst):
+        if time.time() - rt_tbl[dst][3] > TIME_OUT:
+            rt_tbl[dst][1] = INVALID
+            init_gbg_coll(self,dst)
+        return
+    
+    def check_gbg_coll(self, dst):
+        if time.time() - rt_tbl[dst][4] > GARBAGE_COLLECTION:
+            del rt_tbl[dst]
+        return
+    
+    def init_time_out(self,dst):
+        thread = threading.timer(GARBAGE_COLLECTION, check_time_out(dst))
+        thread.start()
+        return
     
     def init_gbg_coll(self,dst):
-        
-        
-    def clear_gbg_coll(self,dst):
-    
+        thread = threading.timer(TIME_OUT, check_gbg_coll(dst))
+        thread.start()
+        return        
     
     def print_routing_table():
         template = "{0:^15d} | {1:^12d} | {2:^10d} | {3:^12.2f} | {4:^20.2f}"
