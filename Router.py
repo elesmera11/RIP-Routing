@@ -1,4 +1,5 @@
 import select
+import threading
 
 HOST = "127.0.0.1"
 INFINITY = 16
@@ -85,7 +86,7 @@ class Router:
         for dst in rtes.keys():
             nxt_hop = rtes[dst][0]
             metric = rtes[dst][1]
-            new_metric = MIN(get_neighbour_metric(nxt_hop) + metric, INFINITY)
+            new_metric = min(get_neighbour_metric(nxt_hop) + metric, INFINITY)
             if dst not in keys:
                 if new_metric < 16:
                     rt_tbl[dst] = nxt_hop, new_metric, 0, init_time_out(), 0
@@ -122,16 +123,25 @@ class Router:
         print_routing_table()
         return
                 
-    def init_time_out():
+    def init_time_out(self,dst):
+        thread = 
         
-    def reset_time_out():
+    def reset_time_out(self,dst):
     
-    def init_gbg_coll():
+    
+    def init_gbg_coll(self,dst):
         
-    def clear_gbg_coll():
+        
+    def clear_gbg_coll(self,dst):
+    
     
     def print_routing_table():
-        
+        template = "{0:^15d} | {1:^12d} | {2:^10d} | {3:^12.2f} | {4:^20.2f}"
+        print("{0:^15s} | {1:^12s} | {2:^10s} | {3:^12s} | {4:^20s}".format("Destination", "Next Hop", "Metric", "Time Out", "Garbage Collection"))
+        for dst in rt_tbl.keys():
+            print(template.format(dst, rt_tbl[0], rt_tbl[1], rt_tbl[3], rt_tbl[4]))
+        return
+    
     def run(self):
         while True:
         read_ready, send_ready, except_ready = select.select(self.inputs, [], [])
