@@ -78,9 +78,12 @@ class Router:
     #def trigger_update():
         #return
     
-    ## Sends periodic update 
-    #def send_update():
-        #return
+    # Sends periodic update 
+    def send_update(self):
+        for neighbour in neighbours:
+            packet = Packet(self.router_id, neighbour, rt_tbl)
+            self.send_packet(packet)
+        return
     
     ## Processes incoming packet
     #def read_packet(data):
@@ -165,7 +168,12 @@ class Router:
     
     def run(self):
         print("Running")
+        time = time.time()
         while True:
+            if time.time() - time >= PERIODIC_UPDATE:
+                thread = threading.timer(PERIODIC_UPDATE, send_update())
+                thread.start()
+                time = time.time()
             read_ready, send_ready, except_ready = select.select(self.input_socks, [], [])
             for socket in read_ready:
                 data, src = socket.recvfrom(512)
@@ -176,16 +184,7 @@ def main():
     if __name__ == "__main__":
         if len(sys.argv) < 2:
             sys.exit("No file given")
-    
-        # closes file when done, file like object
-        with open(sys.argv[1]) as fp:
-            config = configparser.ConfigParser()
-            config.readfp(fp)
-            config_dict = config_parser.parse_config(config)
-    
-            if not config_dict:
-                sys.exit("Invalid config file. Exiting...")
-            print("Loaded config file. Starting router...")        
+     
         router = Router(str(sys.argv[-1]))
         router.run()
 
