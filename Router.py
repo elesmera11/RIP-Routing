@@ -8,6 +8,7 @@ import select
 import socket
 import threading
 import time
+import sys
 import ConfigParser
 from Packet import Packet
 
@@ -47,7 +48,6 @@ class Router:
             self.neighbours[router] = [port, metric]
             socket = self.create_socket(port)
             self.output_socks.append(socket)
-        return
     
     # Get neighbour's metric
     def get_neighbour_metric(self, router_id):
@@ -64,7 +64,7 @@ class Router:
         sock.setblocking(False)
         sock.bind((HOST, port))
         print("Socket " + str(port) + " created")
-        return socket
+        return sock
     
     # Sends packet
     def send_packet(self, packet):
@@ -157,27 +157,53 @@ class Router:
         #thread = threading.timer(TIME_OUT, check_gbg_coll(dst))
         #thread.start()       
     
-    #def print_routing_table():
+    #def print_routing_table(self):
         #template = "{0:^15d} | {1:^12d} | {2:^10d} | {3:^12.2f} | {4:^20.2f}"
         #print("{0:^15s} | {1:^12s} | {2:^10s} | {3:^12s} | {4:^20s}".format("Destination", "Next Hop", "Metric", "Time Out", "Garbage Collection"))
         #for dst in rt_tbl.keys():
-            #print(template.format(dst, rt_tbl[0], rt_tbl[1], rt_tbl[3], rt_tbl[4]))
+            #print(template.format(self.dst, self.rt_tbl[0], self.rt_tbl[1], self.rt_tbl[3], self.rt_tbl[4]))
     
-    #def run(self):
-        #while True:
-        #read_ready, send_ready, except_ready = select.select(self.input_socks, [], [])
-        #if read_ready
-        
-        
+    def run(self):
+        print("Running")
+        while True:
+            read_ready, send_ready, except_ready = select.select(self.input_socks, [], [])
+            for socket in read_ready:
+                data, src = socket.recvfrom(512)
+                read_packet(data)
+                
+def main():
+                
+    if __name__ == "__main__":
+        if len(sys.argv) < 2:
+            sys.exit("No file given")
+    
+        # closes file when done, file like object
+        with open(sys.argv[1]) as fp:
+            config = configparser.ConfigParser()
+            config.readfp(fp)
+            config_dict = config_parser.parse_config(config)
+    
+            if not config_dict:
+                sys.exit("Invalid config file. Exiting...")
+            print("Loaded config file. Starting router...")        
+        router = Router(str(sys.argv[-1]))
+        router.run()
+
+main()
+		
+  
+    
 ################################################################################
     # test
 ################################################################################
     
-y = Router('config_1.ini')
-print("Router ID: " + str(y.router_id))
-print("Neighbour 2 metric: " + str(y.get_neighbour_metric(2)))
-print("Neighbour 2 port: " + str(y.get_neighbour_port(2)))
+#y = Router('config_1.ini')
 
-rting_table = {2: [2, 5, 0, 0, 0], 3: [2, 7, 0, 0, 0], 4: [6, 2, 0, 0, 0]}
-x = Packet(1, 2, rting_table)
-y.send_packet(x)
+
+
+#rting_table = {2: [2, 5, 0, 0, 0], 3: [2, 7, 0, 0, 0], 4: [6, 2, 0, 0, 0]}
+#print("Router ID: " + str(y.router_id))
+#print("Neighbour 2 metric: " + str(y.get_neighbour_metric(2)))
+#print("Neighbour 2 port: " + str(y.get_neighbour_port(2)))
+#x = Packet(1, 2, rting_table)
+#y.send_packet(x)
