@@ -83,6 +83,7 @@ class Router:
         thread.start()
         print("sending update")
         print(time.time())
+        self.print_routing_table();
         for neighbour in self.neighbours:
             print(neighbour)
             packet = Packet(self.router_id, neighbour, self.rt_tbl)
@@ -92,10 +93,10 @@ class Router:
     def read_packet(self, data):
         in_packet = Packet(0, self.router_id, {}) # Initialise class as placeholder
         rte_table = in_packet.decode(data) # Decode the data
-        self.check_neighbours(in_packet)
+        packet_src = self.check_neighbours(in_packet)
         print("Processing packet")
         print(rte_table)
-        self.update_rt_tbl(rte_table) # Update the routing table
+        self.update_rt_tbl(packet_src, rte_table) # Update the routing table
         
     def check_neighbours(self, decoded_packet):
         if decoded_packet.src in self.neighbours.keys():
@@ -107,73 +108,76 @@ class Router:
                                                0]
             print(self.rt_tbl)
             self.init_time_out(decoded_packet.src)
-            
+            return decoded_packet.src
             
     
     # Updates the routing table
-    def update_rt_tbl(self, rtes):
+    def update_rt_tbl(self, packet_src, rtes):
         keys = self.rt_tbl.keys()
-        for dst in rtes.keys():
-            rt_nxt_hop = self.rt_tbl[dst][0]
-            rt_metric = self.rt_tbl[dst][1]
-            #rt_rcf = rt_tbl[dst][2]            
-            nxt_hop = rtes[dst][0]
+        for dst in rtes.keys():     
+            nxt_hop = packet_src
+            print(nxt_hop)
             metric = rtes[dst][1]
-            new_metric = min(get_neighbour_metric(nxt_hop) + metric, INFINITY)
+            new_metric = min(self.get_neighbour_metric(nxt_hop) + metric, INFINITY)
             if dst not in keys:
                 if new_metric < 16:
-                    self.rt_tbl[dst] = nxt_hop, new_metric, 0, init_time_out(), 0
-            else:        
+                    self.rt_tbl[dst] = [nxt_hop, new_metric, 0, time.time(), 0]
+                    self.init_time_out(dst)
+            else:
+                rt_nxt_hop = self.rt_tbl[dst][0]
+                rt_metric = self.rt_tbl[dst][1]
+                #rt_rcf = self.rt_tbl[dst][2]                       
                 if rt_metric < 16:
-                    if rt_time_out > TIME_OUT:
+                    if time.time() - self.rt_tbl[dst][3] > TIME_OUT:
                         rt_metric = 16
                         #rt_rfc = 1
                         rt_gbg_coll = time.time()
-                        self.init_gbg_coll()
+                        self.init_gbg_coll(dst)
                         #trigger_update()
                     elif nxt_hop == rt_nxt_hop and new_metric < 16:
                         if new_metric == rt_metric:
-                            rt_time_out = time.time()
-                            self.init_time_out()
+                            self.rt_tbl[dst][3] = time.time()
+                            self.init_time_out(dst)
                         else:
                             rt_metric = new_metric
                     elif nxt_hop == rt_nxt_hop and new_metric == 16:
                         rt_metric = new_metric
                         #rt_rfc = 1
-                        rt_time_out = time.time()
-                        self.init_time_out()
+                        self.rt_tbl[dst][3] = time.time()
+                        self.init_time_out(dst)
                         rt_gbg_coll = time.time()
-                        self.init_gbg_coll()
+                        self.init_gbg_coll(dst)
                         #trigger_update()
                     elif nxt_hop != rt_nxt_hop and new_metric < rt_metric:
                         rt_nxt_hop = nxt_hop
                         rt_metric = new_metric
-                        rt_time_out = time.time()
-                        self.init_time_out()
+                        self.rt_tbl[dst][3] = time.time()
+                        self.init_time_out(dst)
                 else:
                     if new_metric < 16:
                         rt_nxt_hop = nxt_hop
                         rt_metric = new_metric
-                        rt_time_out = time.time()
-                        self.init_time_out()
+                        self.rt_tbl[dst][3] = time.time()
+                        self.init_time_out(dst)
                         rt_gbg_coll = 0
         self.print_routing_table()
     
     def check_time_out(self, dst):
         if time.time() - self.rt_tbl[dst][3] > TIME_OUT:
             self.rt_tbl[dst][1] = INVALID
-            init_gbg_coll(self,dst)
+            self.rt_tbl[dst][4] = time.time()
+            self.init_gbg_coll(dst)
     
     def check_gbg_coll(self, dst):
         if time.time() - self.rt_tbl[dst][4] > GARBAGE_COLLECTION:
             del self.rt_tbl[dst]
     
-    def init_time_out(self,dst):
+    def init_time_out(self, dst):
         thread = threading.Timer(GARBAGE_COLLECTION, self.check_time_out(dst))
         thread.daemon = True
         thread.start()
     
-    def init_gbg_coll(self,dst):
+    def init_gbg_coll(self, dst):
         thread = threading.Timer(TIME_OUT, self.check_gbg_coll(dst))
         thread.daemon = True
         thread.start()       
