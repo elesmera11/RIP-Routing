@@ -15,16 +15,16 @@ from Packet import Packet
 HOST = "127.0.0.1"
 INFINITY = 16
 INVALID = 16
-TIME_BLOCK = 30
+TIME_BLOCK = 15
 PERIODIC_UPDATE = 30 / TIME_BLOCK
 TIME_OUT = 180 / TIME_BLOCK
 GARBAGE_COLLECTION = 120 / TIME_BLOCK
 
 class Router:
     # Local variables
+    current_time = 0
     router_id = 0       # Router ID of this router
     input_socks = []    # List of input sockets
-    output_socks = []   # List of output sockets
     rt_tbl = {}         # Dict of format {dest: [next hop, metric, RCF, timeout, garbage collection]}
     neighbours = {}     # Dict of format {router ID: [port, metric]
     
@@ -46,8 +46,6 @@ class Router:
             port = int(port)
             metric = int(metric)
             self.neighbours[router] = [port, metric]
-            socket = self.create_socket(port)
-            self.output_socks.append(socket)
     
     # Get neighbour's metric
     def get_neighbour_metric(self, router_id):
@@ -70,7 +68,7 @@ class Router:
     def send_packet(self, packet):
         encoded_packet = packet.encode()
         try:
-            self.input_socks[0].sendto(encoded_packet, (HOST, packet.dst)) # Using first socket as default
+            self.input_socks[0].sendto(encoded_packet, (HOST, self.neighbours[packet.dst][0])) # Using first socket as default
         except Exception:
             print("Could not send packet to destination.")
 #TODO
@@ -80,104 +78,121 @@ class Router:
     
     # Sends periodic update 
     def send_update(self):
-        for neighbour in neighbours:
-            packet = Packet(self.router_id, neighbour, rt_tbl)
+        thread = threading.Timer(PERIODIC_UPDATE, self.send_update)
+        thread.daemon = True
+        thread.start()
+        print("sending update")
+        print(time.time())
+        for neighbour in self.neighbours:
+            print(neighbour)
+            packet = Packet(self.router_id, neighbour, self.rt_tbl)
             self.send_packet(packet)
-        return
     
-    ## Processes incoming packet
-    #def read_packet(data):
-        #in_packet = Packet(0, self.router_id, {}) # Initialise class as placeholder
-        #rte_table = in_packet.decode(data) # Decode the data
-        #print("Processing packet")
-        #update_rt_tbl(rte_table) # Update the routing table
+    # Processes incoming packet
+    def read_packet(self, data):
+        in_packet = Packet(0, self.router_id, {}) # Initialise class as placeholder
+        rte_table = in_packet.decode(data) # Decode the data
+        self.check_neighbours(in_packet)
+        print("Processing packet")
+        print(rte_table)
+        self.update_rt_tbl(rte_table) # Update the routing table
+        
+    def check_neighbours(self, decoded_packet):
+        if decoded_packet.src in self.neighbours.keys():
+            print(decoded_packet.src)
+            self.rt_tbl[decoded_packet.src] = [decoded_packet.src, 
+                                               self.get_neighbour_metric(decoded_packet.src),
+                                               0, 
+                                               time.time(), 
+                                               0]
+            print(self.rt_tbl)
+            self.init_time_out(decoded_packet.src)
+            
+            
     
-    ## Updates the routing table
-    #def update_rt_tbl(self, rtes):
-        #keys = rt_tbl.keys()
-        #rt_nxt_hop = rt_tbl[dst][0]
-        #rt_metric = rt_tbl[dst][1]
-        ##rt_rcf = rt_tbl[dst][2]
-        ##rt_time_out = rt_tbl[dst][3]
-        ##rt_gbg_coll = rt_tbl[dst][4]
-        #for dst in rtes.keys():
-            #nxt_hop = rtes[dst][0]
-            #metric = rtes[dst][1]
-            #new_metric = min(get_neighbour_metric(nxt_hop) + metric, INFINITY)
-            #if dst not in keys:
-                #if new_metric < 16:
-                    #rt_tbl[dst] = nxt_hop, new_metric, 0, init_time_out(), 0
-            #else:        
-                #if rt_metric < 16:
-                    #if rt_time_out > TIME_OUT:
-                        #rt_metric = 16
+    # Updates the routing table
+    def update_rt_tbl(self, rtes):
+        keys = self.rt_tbl.keys()
+        for dst in rtes.keys():
+            rt_nxt_hop = self.rt_tbl[dst][0]
+            rt_metric = self.rt_tbl[dst][1]
+            #rt_rcf = rt_tbl[dst][2]            
+            nxt_hop = rtes[dst][0]
+            metric = rtes[dst][1]
+            new_metric = min(get_neighbour_metric(nxt_hop) + metric, INFINITY)
+            if dst not in keys:
+                if new_metric < 16:
+                    self.rt_tbl[dst] = nxt_hop, new_metric, 0, init_time_out(), 0
+            else:        
+                if rt_metric < 16:
+                    if rt_time_out > TIME_OUT:
+                        rt_metric = 16
                         #rt_rfc = 1
-                        #rt_gbg_coll = time.time()
-                        #init_gbg_coll()
+                        rt_gbg_coll = time.time()
+                        self.init_gbg_coll()
                         #trigger_update()
-                    #elif nxt_hop == rt_nxt_hop and new_metric < 16:
-                        #if new_metric == rt_metric:
-                            #rt_time_out = time.time()
-                            #init_time_out()
-                        #else:
-                            #rt_metric = new_metric
-                    #elif nxt_hop == rt_nxt_hop and new_metric == 16:
-                        #rt_metric = new_metric
+                    elif nxt_hop == rt_nxt_hop and new_metric < 16:
+                        if new_metric == rt_metric:
+                            rt_time_out = time.time()
+                            self.init_time_out()
+                        else:
+                            rt_metric = new_metric
+                    elif nxt_hop == rt_nxt_hop and new_metric == 16:
+                        rt_metric = new_metric
                         #rt_rfc = 1
-                        #rt_time_out = time.time()
-                        #init_time_out()
-                        #rt_gbg_coll = time.time()
-                        #init_gbg_coll()
+                        rt_time_out = time.time()
+                        self.init_time_out()
+                        rt_gbg_coll = time.time()
+                        self.init_gbg_coll()
                         #trigger_update()
-                    #elif nxt_hop != rt_nxt_hop and new_metric < rt_metric:
-                        #rt_nxt_hop = nxt_hop
-                        #rt_metric = new_metric
-                        #rt_time_out = time.time()
-                        #init_time_out()
-                #else:
-                    #if new_metric < 16:
-                        #rt_nxt_hop = nxt_hop
-                        #rt_metric = new_metric
-                        #rt_time_out = time.time()
-                        #init_time_out()
-                        #rt_gbg_coll = 0
-        #print_routing_table()
+                    elif nxt_hop != rt_nxt_hop and new_metric < rt_metric:
+                        rt_nxt_hop = nxt_hop
+                        rt_metric = new_metric
+                        rt_time_out = time.time()
+                        self.init_time_out()
+                else:
+                    if new_metric < 16:
+                        rt_nxt_hop = nxt_hop
+                        rt_metric = new_metric
+                        rt_time_out = time.time()
+                        self.init_time_out()
+                        rt_gbg_coll = 0
+        self.print_routing_table()
     
-    #def check_time_out(self, dst):
-        #if time.time() - rt_tbl[dst][3] > TIME_OUT:
-            #rt_tbl[dst][1] = INVALID
-            #init_gbg_coll(self,dst)
+    def check_time_out(self, dst):
+        if time.time() - self.rt_tbl[dst][3] > TIME_OUT:
+            self.rt_tbl[dst][1] = INVALID
+            init_gbg_coll(self,dst)
     
-    #def check_gbg_coll(self, dst):
-        #if time.time() - rt_tbl[dst][4] > GARBAGE_COLLECTION:
-            #del rt_tbl[dst]
+    def check_gbg_coll(self, dst):
+        if time.time() - self.rt_tbl[dst][4] > GARBAGE_COLLECTION:
+            del self.rt_tbl[dst]
     
-    #def init_time_out(self,dst):
-        #thread = threading.timer(GARBAGE_COLLECTION, check_time_out(dst))
-        #thread.start()
+    def init_time_out(self,dst):
+        thread = threading.Timer(GARBAGE_COLLECTION, self.check_time_out(dst))
+        thread.daemon = True
+        thread.start()
     
-    #def init_gbg_coll(self,dst):
-        #thread = threading.timer(TIME_OUT, check_gbg_coll(dst))
-        #thread.start()       
+    def init_gbg_coll(self,dst):
+        thread = threading.Timer(TIME_OUT, self.check_gbg_coll(dst))
+        thread.daemon = True
+        thread.start()       
     
-    #def print_routing_table(self):
-        #template = "{0:^15d} | {1:^12d} | {2:^10d} | {3:^12.2f} | {4:^20.2f}"
-        #print("{0:^15s} | {1:^12s} | {2:^10s} | {3:^12s} | {4:^20s}".format("Destination", "Next Hop", "Metric", "Time Out", "Garbage Collection"))
-        #for dst in rt_tbl.keys():
-            #print(template.format(self.dst, self.rt_tbl[0], self.rt_tbl[1], self.rt_tbl[3], self.rt_tbl[4]))
+    def print_routing_table(self):
+        template = "{0:^15d} | {1:^12d} | {2:^10d} | {3:^12.2f} | {4:^20.2f}"
+        print("{0:^15s} | {1:^12s} | {2:^10s} | {3:^12s} | {4:^20s}".format("Destination", "Next Hop", "Metric", "Time Out", "Garbage Collection"))
+        for dst in self.rt_tbl.keys():
+            print(template.format(dst, self.rt_tbl[dst][0], self.rt_tbl[dst][1], time.time() - self.rt_tbl[dst][3], self.rt_tbl[dst][4]))
     
     def run(self):
         print("Running")
-        time = time.time()
+        self.send_update()
         while True:
-            if time.time() - time >= PERIODIC_UPDATE:
-                thread = threading.timer(PERIODIC_UPDATE, send_update())
-                thread.start()
-                time = time.time()
-            read_ready, send_ready, except_ready = select.select(self.input_socks, [], [])
-            for socket in read_ready:
-                data, src = socket.recvfrom(512)
-                read_packet(data)
+            read_ready, write_ready, except_ready = select.select(self.input_socks, [], [])
+            for sock in read_ready:
+                print("There is something received")
+                data, src = sock.recvfrom(512)
+                self.read_packet(data)
                 
 def main():
                 
