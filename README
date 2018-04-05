@@ -1,7 +1,8 @@
 Configuration file format:
 
-router_id, x, y, z
-input_ports, xxxx, yyyy, zzzz
-output_ports, xxxx-x-x, yyyy-y-y, zzzz-z-z 
+[Router]
+router-id: x
+input-ports: xxxx yyyy
+output-ports: xxxx-x-x yyyy-y-y
 
 
