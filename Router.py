@@ -114,75 +114,86 @@ class Router:
     # Updates the routing table
     def update_rt_tbl(self, packet_src, rtes):
         keys = self.rt_tbl.keys()
-        for dst in rtes.keys():     
+        neighbours = self.neighbours.keys()
+        for dst in rtes.keys():
             nxt_hop = packet_src
             print(nxt_hop)
             metric = rtes[dst][1]
             new_metric = min(self.get_neighbour_metric(nxt_hop) + metric, INFINITY)
             if dst not in keys:
-                if new_metric < 16:
+                if new_metric < INFINITY:
                     self.rt_tbl[dst] = [nxt_hop, new_metric, 0, time.time(), 0]
                     self.init_time_out(dst)
             else:
-                rt_nxt_hop = self.rt_tbl[dst][0]
-                rt_metric = self.rt_tbl[dst][1]
-                #rt_rcf = self.rt_tbl[dst][2]                       
-                if rt_metric < 16:
-                    if time.time() - self.rt_tbl[dst][3] > TIME_OUT:
-                        rt_metric = 16
-                        #rt_rfc = 1
-                        rt_gbg_coll = time.time()
-                        self.init_gbg_coll(dst)
-                        #trigger_update()
-                    elif nxt_hop == rt_nxt_hop and new_metric < 16:
-                        if new_metric == rt_metric:
-                            self.rt_tbl[dst][3] = time.time()
-                            self.init_time_out(dst)
-                        else:
-                            rt_metric = new_metric
-                    elif nxt_hop == rt_nxt_hop and new_metric == 16:
-                        rt_metric = new_metric
-                        #rt_rfc = 1
-                        self.rt_tbl[dst][3] = time.time()
-                        self.init_time_out(dst)
-                        rt_gbg_coll = time.time()
-                        self.init_gbg_coll(dst)
-                        #trigger_update()
-                    elif nxt_hop != rt_nxt_hop and new_metric < rt_metric:
-                        rt_nxt_hop = nxt_hop
-                        rt_metric = new_metric
-                        self.rt_tbl[dst][3] = time.time()
-                        self.init_time_out(dst)
+                if dst in neighbours:
+                    if time.time() - self.rt_tbl[dst][3] > TIME_OUT and self.rt_tbl[dst][4] >= 0:
+                        if self.rt_tbl[dst][4] == 0:
+                            self.rt_tbl[dst][1] = INVALID
+                            self.rt_tbl[dst][4] = time.time()
+                            self.init_gbg_coll(dst)
+                    else:
+                        self.update(dst, packet_src, new_metric)
                 else:
-                    if new_metric < 16:
-                        rt_nxt_hop = nxt_hop
-                        rt_metric = new_metric
-                        self.rt_tbl[dst][3] = time.time()
-                        self.init_time_out(dst)
-                        rt_gbg_coll = 0
-        self.print_routing_table()
+                    self.update(dst, packet_src, new_metric)
+                
+    
+    def update(self, dst, nxt_hop, new_metric):
+        rt_nxt_hop = self.rt_tbl[dst][0]
+        rt_metric = self.rt_tbl[dst][1]
+        #rt_rcf = self.rt_tbl[dst][2]                       
+        if new_metric < INFINITY:
+            if time.time() - self.rt_tbl[dst][3] > TIME_OUT:
+                self.rt_tbl[dst][1] = INFINITY
+                #self.rt_tbl[dst][2] = 1
+                #self.rt_tbl[dst][4] = time.time()
+                #self.init_gbg_coll(dst)
+                #trigger_update()
+            if nxt_hop == rt_nxt_hop and new_metric < INFINITY:
+                if new_metric == rt_metric:
+                    self.rt_tbl[dst][4] = 0
+                    self.init_time_out(dst)
+                else:
+                    self.rt_tbl[dst][1] = new_metric
+            elif nxt_hop == rt_nxt_hop and new_metric == INFINITY:
+                self.rt_tbl[dst][1] = new_metric
+                #self.rt_tbl[dst][2] = 1
+                self.init_time_out(dst)
+                self.rt_tbl[dst][4] = time.time()
+                self.init_gbg_coll(dst)
+                #trigger_update()
+            elif nxt_hop != rt_nxt_hop and new_metric < rt_metric:
+                self.rt_tbl[dst][0] = nxt_hop
+                self.rt_tbl[dst][1] = new_metric
+    
+                self.rt_tbl[dst][4] = 0
+                self.init_time_out(dst)        
     
     def check_time_out(self, dst):
         if time.time() - self.rt_tbl[dst][3] > TIME_OUT:
             self.rt_tbl[dst][1] = INVALID
             self.rt_tbl[dst][4] = time.time()
             self.init_gbg_coll(dst)
+        return
     
     def check_gbg_coll(self, dst):
         if time.time() - self.rt_tbl[dst][4] > GARBAGE_COLLECTION:
             del self.rt_tbl[dst]
+            self.trigger_update(dst)
+        return
     
     def init_time_out(self, dst):
-        thread = threading.Timer(GARBAGE_COLLECTION, self.check_time_out(dst))
+        thread = threading.Timer(GARBAGE_COLLECTION, self.check_time_out, args = [dst])
         thread.daemon = True
         thread.start()
     
     def init_gbg_coll(self, dst):
-        thread = threading.Timer(TIME_OUT, self.check_gbg_coll(dst))
+        thread = threading.Timer(TIME_OUT, self.check_gbg_coll, args = [dst])
         thread.daemon = True
         thread.start()       
     
     def print_routing_table(self):
+        print("Thread count is :")
+        print(threading.activeCount())
         template = "{0:^15d} | {1:^12d} | {2:^10d} | {3:^12.2f} | {4:^20.2f}"
         print("{0:^15s} | {1:^12s} | {2:^10s} | {3:^12s} | {4:^20s}".format("Destination", "Next Hop", "Metric", "Time Out", "Garbage Collection"))
         for dst in self.rt_tbl.keys():
