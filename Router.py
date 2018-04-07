@@ -7,6 +7,7 @@ Date of last edit: 03/03/2018 """
 import select
 import random
 import socket
+import os.path
 import threading
 import time
 import sys
@@ -128,7 +129,8 @@ class Router:
     def start_time_out(self, packet_src):
         for dst in self.rt_tbl.keys():
             if self.rt_tbl[dst][0] == packet_src or dst == packet_src:
-                self.rt_tbl[dst][3] = time.time()  
+                if (self.rt_tbl[dst][2] < INFINITY):
+                    self.rt_tbl[dst][3] = time.time()  
         self.init_time_out(packet_src)
     
     # Updates the routing table
@@ -185,6 +187,7 @@ class Router:
         for dst in self.rt_tbl.keys():
             if dst == src or self.rt_tbl[dst][0] == src:
                 if time.time() - self.rt_tbl[dst][3] > TIME_OUT:
+                    print("Check out: Route " + str(dst) + " is invalid")
                     self.rt_tbl[dst][1] = INFINITY
                     self.rt_tbl[dst][2] = 1
                     if self.rt_tbl[dst][4] == 0:
@@ -213,7 +216,6 @@ class Router:
         thread.start()       
     
     def print_routing_table(self):
-        print("Thread count is: " + str(threading.activeCount()))
         template = "{0:^15d} | {1:^12d} | {2:^10d} | {3:^12.2f} | {4:^20.2f}"
         print("{0:^15s} | {1:^12s} | {2:^10s} | {3:^12s} | {4:^20s}".format("Destination", "Next Hop", "Metric", "Time Out", "Garbage Collection"))
         for dst in self.rt_tbl.keys():
@@ -234,16 +236,21 @@ class Router:
 def main():
                 
     if __name__ == "__main__":
-        if len(sys.argv) < 2:
-            sys.exit("No file given")
-     
-        router = Router(str(sys.argv[-1]))
-        router.run()
-        
-        if sys.exit():
-            for sock in self.input_socks:
-                sock.close()
-                print("Socket " + str(sock.getsockname() + " is now closed"))
+        try:
+            if len(sys.argv) < 2:
+                print("No file given")
+                sys.exit(0)
+            
+            filename = str(sys.argv[-1])
+            if os.path.exists(filename):
+                router = Router(filename)
+                router.run()
+            else:
+                print("File does not exist")
+                sys.exit(0)
+            
+        except (KeyboardInterrupt, SystemExit):
+            sys.exit(0)         
 
 main()
 		
