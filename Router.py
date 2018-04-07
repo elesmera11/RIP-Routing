@@ -5,6 +5,7 @@ Due date: 27/04/2018, 11:59pm
 Date of last edit: 03/03/2018 """
 
 import select
+import random
 import socket
 import threading
 import time
@@ -22,6 +23,7 @@ GARBAGE_COLLECTION = 120 / TIME_BLOCK
 
 class Router:
     # Local variables
+    triggered_update = 0
     current_time = 0
     router_id = 0       # Router ID of this router
     input_socks = []    # List of input sockets
@@ -80,10 +82,18 @@ class Router:
                 changed[dst] = self.rt_tbl[dst]
                 self.rt_tbl[dst][2] = 0
         if len(changed) > 0:
-            for neighbour in self.neighbours:
-                packet = Packet(self.router_id, neighbour, self.rt_tbl)
-                self.send_packet(packet)
-    
+            delay = random.randint(1, 5)
+            thread = threading.Timer(delay, self.init_trigger_update, args = [changed])
+            thread.daemon = True
+            thread.start()
+                
+    def init_trigger_update(self, changed):
+        for neighbour in self.neighbours:
+            print("Sending triggered update to router " + str(neighbour))
+            packet = Packet(self.router_id, neighbour, changed)
+            self.send_packet(packet)
+        return
+        
     # Sends periodic update 
     def send_update(self):
         thread = threading.Timer(PERIODIC_UPDATE, self.send_update)
@@ -101,7 +111,6 @@ class Router:
         rte_table = in_packet.decode(data) # Decode the data
         packet_src = in_packet.src
         print("Processing packet from router " + str(packet_src))
-        print("RTE table from " + str(packet_src) + " :")
         print(rte_table)
         self.update_rt_tbl(packet_src, rte_table) # Update the routing table
         
@@ -120,6 +129,7 @@ class Router:
         for dst in self.rt_tbl.keys():
             if self.rt_tbl[dst][0] == packet_src or dst == packet_src:
                 self.rt_tbl[dst][3] = time.time()  
+        self.init_time_out(packet_src)
     
     # Updates the routing table
     def update_rt_tbl(self, packet_src, rtes):
@@ -146,57 +156,64 @@ class Router:
                     if nxt_hop == rt_nxt_hop:
                         if new_metric != rt_metric:
                             if rt_metric < INFINITY and new_metric >= INFINITY:
-                                self.update_route(dst, nxt_hop, new_metric, 1)
                                 if self.rt_tbl[dst][4] == 0:
+                                    print("Route " + str(dst) + " is invalid")
+                                    self.update_route(dst, nxt_hop, new_metric, 1)
                                     self.rt_tbl[dst][4] = time.time()
                                     self.init_gbg_coll(dst)
                             else:
+                                print("Route " + str(dst) + " metric has changed")
                                 self.update_route(dst, nxt_hop, new_metric, 0)
                     else:
                         if new_metric < rt_metric:
+                            print("Route " + str(dst) + " has another shorter route")
                             self.update_route(dst, nxt_hop, new_metric, 0)
                 else: 
                     if new_metric < INFINITY:
+                        print("Route " + str(dst) + " is valid again")
                         self.update_route(dst, nxt_hop, new_metric, 0)
                         
-        self.trigger_update()
         self.start_time_out(packet_src)
-        self.init_time_out()
         self.print_routing_table()
+        self.trigger_update()
     
     def update_route(self, dst, nxt_hop, new_metric, rcf):
         self.rt_tbl[dst] = [nxt_hop, new_metric, rcf, 0, 0]
     
         
-    def check_time_out(self):
+    def check_time_out(self, src):
         for dst in self.rt_tbl.keys():
-            if time.time() - self.rt_tbl[dst][3] > TIME_OUT:
-                self.rt_tbl[dst][1] = INFINITY
-                self.rt_tbl[dst][2] = 1
-                self.trigger_update()
-                if self.rt_tbl[dst][4] == 0:
-                    self.rt_tbl[dst][4] = time.time()
-                    self.init_gbg_coll(dst)
+            if dst == src or self.rt_tbl[dst][0] == src:
+                if time.time() - self.rt_tbl[dst][3] > TIME_OUT:
+                    self.rt_tbl[dst][1] = INFINITY
+                    self.rt_tbl[dst][2] = 1
+                    if self.rt_tbl[dst][4] == 0:
+                        self.rt_tbl[dst][4] = time.time()
+                        self.init_gbg_coll(dst)
+        self.print_routing_table()
+        self.trigger_update()
         return
     
     def check_gbg_coll(self, dst):
-        if time.time() - self.rt_tbl[dst][4] > GARBAGE_COLLECTION:
-            del self.rt_tbl[dst]
+        if self.rt_tbl[dst][4] != 0:
+            if (time.time() - self.rt_tbl[dst][4]) > GARBAGE_COLLECTION:
+                del self.rt_tbl[dst]
+                print("Route " + str(dst) + " is removed")
+                self.print_routing_table()
         return
     
-    def init_time_out(self):
-        thread = threading.Timer(GARBAGE_COLLECTION, self.check_time_out)
+    def init_time_out(self, src):
+        thread = threading.Timer(TIME_OUT, self.check_time_out, args = [src])
         thread.daemon = True
         thread.start()
     
     def init_gbg_coll(self, dst):
-        thread = threading.Timer(TIME_OUT, self.check_gbg_coll, args = [dst])
+        thread = threading.Timer(GARBAGE_COLLECTION, self.check_gbg_coll, args = [dst])
         thread.daemon = True
         thread.start()       
     
     def print_routing_table(self):
-        print("Thread count is :")
-        print(threading.activeCount())
+        print("Thread count is: " + str(threading.activeCount()))
         template = "{0:^15d} | {1:^12d} | {2:^10d} | {3:^12.2f} | {4:^20.2f}"
         print("{0:^15s} | {1:^12s} | {2:^10s} | {3:^12s} | {4:^20s}".format("Destination", "Next Hop", "Metric", "Time Out", "Garbage Collection"))
         for dst in self.rt_tbl.keys():
