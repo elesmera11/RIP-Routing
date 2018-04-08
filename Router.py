@@ -97,7 +97,8 @@ class Router:
         
     # Sends periodic update 
     def send_update(self):
-        thread = threading.Timer(PERIODIC_UPDATE, self.send_update)
+        period = float(random.randint(8, 12) / 10)
+        thread = threading.Timer(period * PERIODIC_UPDATE, self.send_update)
         thread.daemon = True
         thread.start()
         
