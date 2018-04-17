@@ -55,7 +55,7 @@ class Packet:
                 # Pack each RTE and add it to the binary packet
                 encoded_packet += struct.pack(RTE_FORMAT, AFI, TAG, 
                                               key, nxt_hop, metric)
-        return(encoded_packet)
+        return encoded_packet
     
     #***************************************************************************
     # Function to decode the packet from binary string. 
