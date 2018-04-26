@@ -2,7 +2,7 @@
 Router.py - Main code for virtual routers.
 Authors: Shan Koo and Kate Chamberlin
 Due date: 27/04/2018, 11:59pm
-Date of last edit: 03/03/2018 """
+Date of last edit: 26/04/2018 """
 
 import select
 import random
@@ -31,7 +31,10 @@ class Router:
     rt_tbl = {}         # Dict of format {dest: [next hop, metric, RCF, timeout, garbage collection]}
     neighbours = {}     # Dict of format {router ID: [port, metric]
     
-    # Initialisation
+    #***************************************************************************
+    # Initialise the router
+    # @param config_file the router configuration file
+    #***************************************************************************
     def __init__(self, config_file):
         # Parse configurations
         config_list = ConfigParser.get_config(config_file)
@@ -50,15 +53,24 @@ class Router:
             metric = int(metric)
             self.neighbours[router] = [port, metric]
     
-    # Get neighbour's metric
+    #***************************************************************************
+    # Gets the metric of a neighbour
+    # @param router_id the router id
+    #***************************************************************************
     def get_neighbour_metric(self, router_id):
         return self.neighbours[router_id][1]
     
-    # Get neighbour's port
+    #***************************************************************************
+    # Gets the port of a neighbour
+    # @param router_id the router id
+    #***************************************************************************
     def get_neighbour_port(self, router_id):
         return self.neighbours[router_id][0]
     
-    # Creates sockets
+    #***************************************************************************
+    # Creates socket for the port number
+    # @param port the port number
+    #***************************************************************************
     def create_socket(self, port):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -67,15 +79,23 @@ class Router:
         print("Socket " + str(port) + " created")
         return sock
     
-    # Sends packet
+    #***************************************************************************
+    # Sends the packet
+    # @param packet the packet
+    #***************************************************************************
     def send_packet(self, packet):
         encoded_packet = packet.encode()
         try:
-            self.input_socks[0].sendto(encoded_packet, (HOST, self.neighbours[packet.dst][0])) # Using first socket as default
+            # Using first socket as default
+            self.input_socks[0].sendto(encoded_packet, (HOST, self.neighbours[packet.dst][0])) 
         except Exception:
             print("Could not send packet to destination.")
-#TODO
-    # Triggers update    
+            return
+            
+    #***************************************************************************
+    # Triggers update
+    # @param src the source router id that triggered the update
+    #***************************************************************************        
     def trigger_update(self, src):
         changed = {}
         for dst in self.rt_tbl.keys():
@@ -87,7 +107,12 @@ class Router:
             thread = threading.Timer(delay, self.init_trigger_update, args = [changed, src])
             thread.daemon = True
             thread.start()
-                
+    
+    #***************************************************************************
+    # Function to send trigger update to the neighbours
+    # @param changed a list of changed route(s)
+    # @param src the source destination that calls the trigger update
+    #***************************************************************************    
     def init_trigger_update(self, changed, src):
         for neighbour in self.neighbours:
             if neighbour != src:
@@ -96,7 +121,9 @@ class Router:
                 self.send_packet(packet)
         return
         
-    # Sends periodic update 
+    #***************************************************************************
+    # Sends periodic update to neighbours
+    #*************************************************************************** 
     def send_update(self):
         period = float(random.randint(8, 12) / 10)
         thread = threading.Timer(period * PERIODIC_UPDATE, self.send_update)
@@ -108,7 +135,10 @@ class Router:
             packet = Packet(self.router_id, neighbour, self.rt_tbl)
             self.send_packet(packet)
     
-    # Processes incoming packet
+    #***************************************************************************
+    # Process incoming packet
+    # @param data the packet
+    #***************************************************************************
     def read_packet(self, data):
         in_packet = Packet(0, self.router_id, {}) # Initialise class as placeholder
         rte_table = in_packet.decode(data) # Decode the data
@@ -116,7 +146,10 @@ class Router:
         print("Processing packet from router " + str(packet_src))
         self.update_rt_tbl(packet_src, rte_table) # Update the routing table
         
-    # Initiate time out
+    #***************************************************************************
+    # Starts time out
+    # @param packet_src the source router id
+    #***************************************************************************
     def start_time_out(self, packet_src):
         for dst in self.rt_tbl.keys():
             if self.rt_tbl[dst][0] == packet_src or dst == packet_src:
@@ -124,7 +157,11 @@ class Router:
                     self.rt_tbl[dst][3] = time.time()  
         self.init_time_out(packet_src)
     
-    # Updates the routing table
+    #***************************************************************************
+    # Updates routing table
+    # @param packet_src the source router id
+    # @param rtes the routing entries received in a packet
+    #***************************************************************************
     def update_rt_tbl(self, packet_src, rtes):
         keys = self.rt_tbl.keys()
         neighbours = self.neighbours.keys()
@@ -145,41 +182,57 @@ class Router:
             else:
                 rt_nxt_hop = self.rt_tbl[dst][0]
                 rt_metric = self.rt_tbl[dst][1]   
-                rt_garbage = self.rt_tbl[dst][4] 
+                rt_garbage = self.rt_tbl[dst][4]
+                # Valid route
                 if rt_metric < INFINITY:
+                    # Same next hop
                     if nxt_hop == rt_nxt_hop:
+                        # Metric changed
                         if new_metric != rt_metric:
+                            # Route becomes invalid
                             if rt_metric < INFINITY and new_metric >= INFINITY:
                                 if self.rt_tbl[dst][4] == 0:
-                                    print("Route " + str(dst) + " is invalid")
                                     self.rt_tbl[dst][1] = new_metric
                                     self.rt_tbl[dst][2] = 1
                                     self.rt_tbl[dst][4] = time.time()
                                     self.init_gbg_coll(dst)
+                            # Route metric changed
                             else:
-                                print("Route " + str(dst) + " metric has changed")
                                 self.update_route(dst, nxt_hop, new_metric, 0)
+                    # Different next hop
                     else:
+                        # New optimal path found
                         if new_metric < rt_metric:
-                            print("Route " + str(dst) + " has another shorter route")
                             self.update_route(dst, nxt_hop, new_metric, 0)
+                # Invalid route
                 else: 
+                    # Another route found
                     if new_metric < INFINITY:
-                        print("Route " + str(dst) + " is valid again")
                         self.update_route(dst, nxt_hop, new_metric, 0)
                         
         self.start_time_out(packet_src)
         self.trigger_update(packet_src)
         self.print_routing_table()
     
+    #***************************************************************************
+    # Updates routing table entry
+    # @param dst the destination id
+    # @param nxt_hop the next hop id
+    # @param new_metric the metric
+    # @param rcf the route change flag
+    #***************************************************************************    
     def update_route(self, dst, nxt_hop, new_metric, rcf):
         self.rt_tbl[dst] = [nxt_hop, new_metric, rcf, 0, 0]
-        
+    
+    #***************************************************************************
+    # Function to check time out of an entry
+    # @param src the source router id
+    #***************************************************************************        
     def check_time_out(self, src):
         for dst in self.rt_tbl.keys():
             if dst == src or self.rt_tbl[dst][0] == src:
+                # Route is invalid
                 if time.time() - self.rt_tbl[dst][3] > TIME_OUT:
-                    print("Check time out: Route " + str(dst) + " is invalid")
                     self.rt_tbl[dst][1] = INFINITY
                     self.rt_tbl[dst][2] = 1
                     if self.rt_tbl[dst][4] == 0:
@@ -188,41 +241,65 @@ class Router:
         self.trigger_update(src)
         return
     
+    #***************************************************************************
+    # Function to check garbage collection of an entry
+    # @param dst the destination id
+    #***************************************************************************
     def check_gbg_coll(self, dst):
         if self.rt_tbl[dst][4] != 0:
+            # Route removed
             if (time.time() - self.rt_tbl[dst][4]) > GARBAGE_COLLECTION:
                 del self.rt_tbl[dst]
-                print("Route " + str(dst) + " is removed")
         return
     
+    #***************************************************************************
+    # Function to start thread to check time out
+    # @param src the source id
+    #***************************************************************************    
     def init_time_out(self, src):
         thread = threading.Timer(TIME_OUT, self.check_time_out, args = [src])
         thread.daemon = True
         thread.start()
     
+    #***************************************************************************
+    # Function to start thread to check garbage collection
+    # @param dst the destination id
+    #***************************************************************************    
     def init_gbg_coll(self, dst):
         thread = threading.Timer(GARBAGE_COLLECTION, self.check_gbg_coll, args = [dst])
         thread.daemon = True
         thread.start()       
     
+    #***************************************************************************
+    # Prints routing table
+    #***************************************************************************    
     def print_routing_table(self):
         template = "{0:^15d} | {1:^12d} | {2:^10d} | {3:^12.2f} | {4:^20.2f}"
-        print("{0:^15s} | {1:^12s} | {2:^10s} | {3:^12s} | {4:^20s}".format("Destination", "Next Hop", "Metric", "Time Out", "Garbage Collection"))
+        print("{0:^15s} | {1:^12s} | {2:^10s} | {3:^12s} | {4:^20s}".format(
+            "Destination", "Next Hop", "Metric", "Time Out", "Garbage Collection"))
         for dst in self.rt_tbl.keys():
             if self.rt_tbl[dst][4] == 0:
-                print(template.format(dst, self.rt_tbl[dst][0], self.rt_tbl[dst][1], time.time() - self.rt_tbl[dst][3], 0))
+                print(template.format(dst, self.rt_tbl[dst][0], self.rt_tbl[dst][1], 
+                                      time.time() - self.rt_tbl[dst][3], 0))
             else:
-                print(template.format(dst, self.rt_tbl[dst][0], self.rt_tbl[dst][1], time.time() - self.rt_tbl[dst][3], time.time() - self.rt_tbl[dst][4]))
+                print(template.format(dst, self.rt_tbl[dst][0], self.rt_tbl[dst][1], 
+                                      time.time() - self.rt_tbl[dst][3], 
+                                      time.time() - self.rt_tbl[dst][4]))
     
+    #***************************************************************************
+    # Runs the router
+    #***************************************************************************    
     def run(self):
-        print("Router is running")
         self.send_update()
         while True:
             read_ready, write_ready, except_ready = select.select(self.input_socks, [], [])
             for sock in read_ready:
                 data, src = sock.recvfrom(512)
                 self.read_packet(data)
-                
+
+#***************************************************************************
+# Main function to start the router
+#***************************************************************************           
 def main():
                 
     if __name__ == "__main__":
@@ -243,10 +320,4 @@ def main():
             sys.exit(0)         
 
 main()
-		
-  
-    
-################################################################################
-    # test
-################################################################################
     

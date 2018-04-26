@@ -1,9 +1,8 @@
 """RIP ROUTING ASSIGNMENT - COSC364
-Packet.py - Class code for the packet objects. Implements 
-split horizon with poisoned reverse.
+Packet.py - Main code for virtual routers.
 Authors: Shan Koo and Kate Chamberlin
 Due date: 27/04/2018, 11:59pm
-Date of last edit: 15/03/2018 """
+Date of last edit: 26/04/2018 """
 
 import socket
 import struct
@@ -26,11 +25,16 @@ class Packet:
     dst = 0
     rtes = {}
     
+    #***************************************************************************
+    # Initialises the packet
+    # @param src the source id
+    # @param dst the dst id
+    # @param routing_table the routing table
+    #***************************************************************************    
     def __init__(self, src, dst, routing_table):
         self.src = src
         self.dst = dst
         self.rtes = routing_table
-    
     
     #***************************************************************************
     # Function to encode the packet into a binary string
@@ -87,8 +91,3 @@ class Packet:
             else:
                 i += RTE_SIZE
         return decoded_rte_table
-
-
-################################################################################
-    # test
-################################################################################

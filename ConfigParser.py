@@ -1,8 +1,8 @@
 """RIP ROUTING ASSIGNMENT - COSC364
-ConfigParser - parses the router configs from a the given text file.
+ConfigParser.py - Main code for virtual routers.
 Authors: Shan Koo and Kate Chamberlin
 Due date: 27/04/2018, 11:59pm
-Date of last edit: 15/03/2018 """
+Date of last edit: 26/04/2018 """
 
 import configparser
 import sys
@@ -66,9 +66,3 @@ def check_ports(ports_list):
     # Check for duplicates
     if len(set(ports_list)) != len(ports_list):
         raise Exception("Error - Duplicate port number")  
-        
-
-################################################################################
-    # test
-################################################################################
-#print(get_config('config_1.ini'))
