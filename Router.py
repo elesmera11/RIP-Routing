@@ -33,7 +33,7 @@ GARBAGE_COLLECTION = 120 / TIME_BLOCK
 
 class Router:
     # Local variables
-    lock = threading.Lock()
+    lock = threading.RLock()
     router_id = 0       # Router ID of this router
     input_socks = []    # List of input sockets
     rt_tbl = {}         # Dict of format {dest: [next hop, metric, RCF, timeout, garbage collection]}
@@ -125,7 +125,6 @@ class Router:
     def init_trigger_update(self, changed, src):
         for neighbour in self.neighbours:
             if neighbour != src:
-                print("Sending triggered update to router " + str(neighbour))
                 packet = Packet(self.router_id, neighbour, changed)
                 self.send_packet(packet)
         return
@@ -140,7 +139,6 @@ class Router:
         thread.start()
         
         for neighbour in self.neighbours:
-            print("Sending update to router " + str(neighbour))
             packet = Packet(self.router_id, neighbour, self.rt_tbl)
             self.send_packet(packet)
     
@@ -152,7 +150,6 @@ class Router:
         in_packet = Packet(0, self.router_id, {}) # Initialise class as placeholder
         rte_table = in_packet.decode(data) # Decode the data
         packet_src = in_packet.src
-        print("Processing packet from router " + str(packet_src))
         self.update_rt_tbl(packet_src, rte_table) # Update the routing table
         
     #***************************************************************************
@@ -179,7 +176,6 @@ class Router:
         nxt_hop_metric = self.get_neighbour_metric(nxt_hop)
         if packet_src not in keys:
             self.update_route(nxt_hop, nxt_hop, nxt_hop_metric, 0)
-            print("Entry added for route " + str(packet_src))
         for dest in rtes.keys():
             metric = rtes[dest][1]
             new_metric = min(nxt_hop_metric + metric, INFINITY)
@@ -187,7 +183,6 @@ class Router:
             if dest not in keys:
                 if new_metric < INFINITY:
                     self.rt_tbl[dest] = [nxt_hop, new_metric, 0, 0, 0]
-                    print("Entry added for route " + str(dest))
             # Route exist
             else:
                 rt_nxt_hop = self.rt_tbl[dest][NEXTHOP]
