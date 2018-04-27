@@ -164,17 +164,18 @@ class Router:
         self.init_time_out(packet_src)
     
     #***************************************************************************
-    # Updates routing table
+    # Updates routing table according to RIP protocol
     # @param packet_src the source router id
     # @param rtes the routing entries received in a packet
     #***************************************************************************
     def update_rt_tbl(self, packet_src, rtes):
-        self.lock.acquire()
+        self.lock.acquire() #locking mechanism for threads
         keys = self.rt_tbl.keys()
         neighbours = self.neighbours.keys()
         nxt_hop = packet_src
         nxt_hop_metric = self.get_neighbour_metric(nxt_hop)
-        if packet_src not in keys:
+        # add a new route
+        if packet_src not in keys: 
             self.update_route(nxt_hop, nxt_hop, nxt_hop_metric, 0)
         for dest in rtes.keys():
             metric = rtes[dest][1]
