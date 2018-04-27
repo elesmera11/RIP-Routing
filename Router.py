@@ -2,16 +2,27 @@
 Router.py - Main code for virtual routers.
 Authors: Shan Koo and Kate Chamberlin
 Due date: 27/04/2018, 11:59pm
-Date of last edit: 03/03/2018 """
+Date of last edit: 27/04/2018 """
 
 import select
+import random
 import socket
+import os.path
 import threading
 import time
 import sys
 import ConfigParser
 from Packet import Packet
 
+#enumeration for the dictionary format (no spaces to ensure difference)
+NEXTHOP = 0
+METRIC = 1
+RCF = 2
+TIMEOUT = 3
+GARBAGECOLL = 4
+PORT = 0
+
+#constants
 HOST = "127.0.0.1"
 INFINITY = 16
 INVALID = 16
@@ -22,40 +33,52 @@ GARBAGE_COLLECTION = 120 / TIME_BLOCK
 
 class Router:
     # Local variables
-    current_time = 0
+    lock = threading.Lock()
     router_id = 0       # Router ID of this router
     input_socks = []    # List of input sockets
     rt_tbl = {}         # Dict of format {dest: [next hop, metric, RCF, timeout, garbage collection]}
     neighbours = {}     # Dict of format {router ID: [port, metric]
     
-    # Initialisation
+    #***************************************************************************
+    # Initialise the router
+    # @param config_file the router configuration file
+    #***************************************************************************
     def __init__(self, config_file):
         # Parse configurations
         config_list = ConfigParser.get_config(config_file)
         self.router_id = config_list[0] # Parse router ID
         
         # Parse and set input ports
-        for port in config_list[1]:
+        for port in config_list[1]: #line 2, input ports
             port = int(port)
             socket = self.create_socket(port)
             self.input_socks.append(socket)
         
         # Parse and set output ports
-        for port, metric, router in config_list[2]:
+        for port, metric, router in config_list[2]: #line 3, output ports
             router = int(router)
             port = int(port)
             metric = int(metric)
             self.neighbours[router] = [port, metric]
     
-    # Get neighbour's metric
+    #***************************************************************************
+    # Gets the metric of a neighbour
+    # @param router_id the router id
+    #***************************************************************************
     def get_neighbour_metric(self, router_id):
-        return self.neighbours[router_id][1]
+        return self.neighbours[router_id][METRIC]
     
-    # Get neighbour's port
+    #***************************************************************************
+    # Gets the port of a neighbour
+    # @param router_id the router id
+    #***************************************************************************
     def get_neighbour_port(self, router_id):
-        return self.neighbours[router_id][0]
+        return self.neighbours[router_id][PORT]
     
-    # Creates sockets
+    #***************************************************************************
+    # Creates socket for the port number
+    # @param port the port number
+    #***************************************************************************
     def create_socket(self, port):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -64,178 +87,261 @@ class Router:
         print("Socket " + str(port) + " created")
         return sock
     
-    # Sends packet
+    #***************************************************************************
+    # Sends the packet
+    # @param packet the packet
+    #***************************************************************************
     def send_packet(self, packet):
         encoded_packet = packet.encode()
         try:
-            self.input_socks[0].sendto(encoded_packet, (HOST, self.neighbours[packet.dst][0])) # Using first socket as default
+            # Using first socket as default
+            self.input_socks[0].sendto(encoded_packet, (HOST, self.neighbours[packet.dst][PORT])) 
         except Exception:
             print("Could not send packet to destination.")
-#TODO
-    ## Triggers update    
-    #def trigger_update():
-        #return
+            return
+            
+    #***************************************************************************
+    # Triggers update
+    # @param src the source router id that triggered the update
+    #***************************************************************************        
+    def trigger_update(self, src):
+        changed = {}
+        for dest in self.rt_tbl.keys():
+            if self.rt_tbl[dest][RCF] == 1:
+                changed[dest] = self.rt_tbl[dest]
+                self.rt_tbl[dest][RCF] = 0
+        if len(changed) > 0:
+            delay = random.randint(1, 5)
+            thread = threading.Timer(delay, self.init_trigger_update, 
+                                     args = [changed, src])
+            thread.daemon = True
+            thread.start()
     
-    # Sends periodic update 
+    #***************************************************************************
+    # Function to send trigger update to the neighbours
+    # @param changed a list of changed route(s)
+    # @param src the source destination that calls the trigger update
+    #***************************************************************************    
+    def init_trigger_update(self, changed, src):
+        for neighbour in self.neighbours:
+            if neighbour != src:
+                print("Sending triggered update to router " + str(neighbour))
+                packet = Packet(self.router_id, neighbour, changed)
+                self.send_packet(packet)
+        return
+        
+    #***************************************************************************
+    # Sends periodic update to neighbours
+    #*************************************************************************** 
     def send_update(self):
-        thread = threading.Timer(PERIODIC_UPDATE, self.send_update)
+        period = float(random.randint(8, 12) / 10)
+        thread = threading.Timer(period * PERIODIC_UPDATE, self.send_update)
         thread.daemon = True
         thread.start()
-        print("sending update")
-        print(time.time())
-        self.print_routing_table();
+        
         for neighbour in self.neighbours:
-            print(neighbour)
+            print("Sending update to router " + str(neighbour))
             packet = Packet(self.router_id, neighbour, self.rt_tbl)
             self.send_packet(packet)
     
-    # Processes incoming packet
+    #***************************************************************************
+    # Process incoming packet
+    # @param data the packet
+    #***************************************************************************
     def read_packet(self, data):
         in_packet = Packet(0, self.router_id, {}) # Initialise class as placeholder
         rte_table = in_packet.decode(data) # Decode the data
-        packet_src = self.check_neighbours(in_packet)
-        print("Processing packet")
-        print(rte_table)
+        packet_src = in_packet.src
+        print("Processing packet from router " + str(packet_src))
         self.update_rt_tbl(packet_src, rte_table) # Update the routing table
         
-    def check_neighbours(self, decoded_packet):
-        if decoded_packet.src in self.neighbours.keys():
-            print(decoded_packet.src)
-            self.rt_tbl[decoded_packet.src] = [decoded_packet.src, 
-                                               self.get_neighbour_metric(decoded_packet.src),
-                                               0, 
-                                               time.time(), 
-                                               0]
-            print(self.rt_tbl)
-            self.init_time_out(decoded_packet.src)
-            return decoded_packet.src
-            
+    #***************************************************************************
+    # Starts time out
+    # @param packet_src the source router id
+    #***************************************************************************
+    def start_time_out(self, packet_src):
+        for dest in self.rt_tbl.keys():
+            if self.rt_tbl[dest][NEXTHOP] == packet_src or dest == packet_src:
+                if (self.rt_tbl[dest][METRIC] < INFINITY):
+                    self.rt_tbl[dest][TIMEOUT] = time.time()  
+        self.init_time_out(packet_src)
     
-    # Updates the routing table
+    #***************************************************************************
+    # Updates routing table
+    # @param packet_src the source router id
+    # @param rtes the routing entries received in a packet
+    #***************************************************************************
     def update_rt_tbl(self, packet_src, rtes):
+        self.lock.acquire()
         keys = self.rt_tbl.keys()
         neighbours = self.neighbours.keys()
-        for dst in rtes.keys():
-            nxt_hop = packet_src
-            print(nxt_hop)
-            metric = rtes[dst][1]
-            new_metric = min(self.get_neighbour_metric(nxt_hop) + metric, INFINITY)
-            if dst not in keys:
+        nxt_hop = packet_src
+        nxt_hop_metric = self.get_neighbour_metric(nxt_hop)
+        if packet_src not in keys:
+            self.update_route(nxt_hop, nxt_hop, nxt_hop_metric, 0)
+            print("Entry added for route " + str(packet_src))
+        for dest in rtes.keys():
+            metric = rtes[dest][1]
+            new_metric = min(nxt_hop_metric + metric, INFINITY)
+            # Route does not exist
+            if dest not in keys:
                 if new_metric < INFINITY:
-                    self.rt_tbl[dst] = [nxt_hop, new_metric, 0, time.time(), 0]
-                    self.init_time_out(dst)
+                    self.rt_tbl[dest] = [nxt_hop, new_metric, 0, 0, 0]
+                    print("Entry added for route " + str(dest))
+            # Route exist
             else:
-                if dst in neighbours:
-                    if time.time() - self.rt_tbl[dst][3] > TIME_OUT and self.rt_tbl[dst][4] >= 0:
-                        if self.rt_tbl[dst][4] == 0:
-                            self.rt_tbl[dst][1] = INVALID
-                            self.rt_tbl[dst][4] = time.time()
-                            self.init_gbg_coll(dst)
+                rt_nxt_hop = self.rt_tbl[dest][NEXTHOP]
+                rt_metric = self.rt_tbl[dest][METRIC]   
+                rt_garbage = self.rt_tbl[dest][GARBAGECOLL]
+                # Valid route
+                if rt_metric < INFINITY:
+                    # Same next hop
+                    if nxt_hop == rt_nxt_hop:
+                        # Metric changed
+                        if new_metric != rt_metric:
+                            # Route becomes invalid
+                            if rt_metric < INFINITY and new_metric >= INFINITY:
+                                if self.rt_tbl[dest][GARBAGECOLL] == 0:
+                                    self.rt_tbl[dest][METRIC] = new_metric
+                                    self.rt_tbl[dest][RCF] = 1
+                                    self.rt_tbl[dest][GARBAGECOLL] = time.time()
+                                    self.init_gbg_coll(dest)
+                            # Route metric changed
+                            else:
+                                self.update_route(dest, nxt_hop, new_metric, 0)
+                    # Different next hop
                     else:
-                        self.update(dst, packet_src, new_metric)
-                else:
-                    self.update(dst, packet_src, new_metric)
-                
+                        # New optimal path found
+                        if new_metric < rt_metric:
+                            self.update_route(dest, nxt_hop, new_metric, 0)
+                # Invalid route
+                else: 
+                    # Another route found
+                    if new_metric < INFINITY:
+                        self.update_route(dest, nxt_hop, new_metric, 0)
+                        
+        self.start_time_out(packet_src)
+        self.trigger_update(packet_src)
+        self.print_routing_table()
+        self.lock.release()
     
-    def update(self, dst, nxt_hop, new_metric):
-        rt_nxt_hop = self.rt_tbl[dst][0]
-        rt_metric = self.rt_tbl[dst][1]
-        #rt_rcf = self.rt_tbl[dst][2]                       
-        if new_metric < INFINITY:
-            if time.time() - self.rt_tbl[dst][3] > TIME_OUT:
-                self.rt_tbl[dst][1] = INFINITY
-                #self.rt_tbl[dst][2] = 1
-                #self.rt_tbl[dst][4] = time.time()
-                #self.init_gbg_coll(dst)
-                #trigger_update()
-            if nxt_hop == rt_nxt_hop and new_metric < INFINITY:
-                if new_metric == rt_metric:
-                    self.rt_tbl[dst][4] = 0
-                    self.init_time_out(dst)
-                else:
-                    self.rt_tbl[dst][1] = new_metric
-            elif nxt_hop == rt_nxt_hop and new_metric == INFINITY:
-                self.rt_tbl[dst][1] = new_metric
-                #self.rt_tbl[dst][2] = 1
-                self.init_time_out(dst)
-                self.rt_tbl[dst][4] = time.time()
-                self.init_gbg_coll(dst)
-                #trigger_update()
-            elif nxt_hop != rt_nxt_hop and new_metric < rt_metric:
-                self.rt_tbl[dst][0] = nxt_hop
-                self.rt_tbl[dst][1] = new_metric
+    #***************************************************************************
+    # Updates routing table entry
+    # @param dest the destination id
+    # @param nxt_hop the next hop id
+    # @param new_metric the metric
+    # @param rcf the route change flag
+    #***************************************************************************    
+    def update_route(self, dest, nxt_hop, new_metric, rcf):
+        self.rt_tbl[dest] = [nxt_hop, new_metric, rcf, 0, 0]
     
-                self.rt_tbl[dst][4] = 0
-                self.init_time_out(dst)        
-    
-    def check_time_out(self, dst):
-        if time.time() - self.rt_tbl[dst][3] > TIME_OUT:
-            self.rt_tbl[dst][1] = INVALID
-            self.rt_tbl[dst][4] = time.time()
-            self.init_gbg_coll(dst)
+    #***************************************************************************
+    # Function to check time out of an entry
+    # @param src the source router id
+    #***************************************************************************        
+    def check_time_out(self, src):
+        self.lock.acquire()
+        for dest in self.rt_tbl.keys():
+            if dest == src or self.rt_tbl[dest][NEXTHOP] == src:
+                # Route is invalid
+                if time.time() - self.rt_tbl[dest][TIMEOUT] > TIME_OUT:
+                    self.rt_tbl[dest][METRIC] = INFINITY
+                    self.rt_tbl[dest][RCF] = 1
+                    if self.rt_tbl[dest][GARBAGECOLL] == 0:
+                        self.rt_tbl[dest][GARBAGECOLL] = time.time()
+                        self.init_gbg_coll(dest)
+        self.trigger_update(src)
+        self.lock.release()
         return
     
-    def check_gbg_coll(self, dst):
-        if time.time() - self.rt_tbl[dst][4] > GARBAGE_COLLECTION:
-            del self.rt_tbl[dst]
-            self.trigger_update(dst)
+    #***************************************************************************
+    # Function to check garbage collection of an entry
+    # @param dest the destination id
+    #***************************************************************************
+    def check_gbg_coll(self, dest):
+        self.lock.acquire()
+        if self.rt_tbl[dest][4] != 0:
+            # Route removed
+            if (time.time() - self.rt_tbl[dest][GARBAGECOLL]) > GARBAGE_COLLECTION:
+                del self.rt_tbl[dest]
+        self.lock.release()
         return
     
-    def init_time_out(self, dst):
-        thread = threading.Timer(GARBAGE_COLLECTION, self.check_time_out, args = [dst])
+    #***************************************************************************
+    # Function to start thread to check time out
+    # @param src the source id
+    #***************************************************************************    
+    def init_time_out(self, src):
+        thread = threading.Timer(TIME_OUT, self.check_time_out, args = [src])
         thread.daemon = True
         thread.start()
     
-    def init_gbg_coll(self, dst):
-        thread = threading.Timer(TIME_OUT, self.check_gbg_coll, args = [dst])
+    #***************************************************************************
+    # Function to start thread to check garbage collection
+    # @param dest the destination id
+    #***************************************************************************    
+    def init_gbg_coll(self, dest):
+        thread = threading.Timer(GARBAGE_COLLECTION, 
+                                 self.check_gbg_coll, 
+                                 args = [dest])
         thread.daemon = True
         thread.start()       
     
+    #***************************************************************************
+    # Prints routing table in format:
+    # Destination, Next Hop, Metric, Time-out, Garbage Collection
+    #***************************************************************************    
     def print_routing_table(self):
-        print("Thread count is :")
-        print(threading.activeCount())
         template = "{0:^15d} | {1:^12d} | {2:^10d} | {3:^12.2f} | {4:^20.2f}"
-        print("{0:^15s} | {1:^12s} | {2:^10s} | {3:^12s} | {4:^20s}".format("Destination", "Next Hop", "Metric", "Time Out", "Garbage Collection"))
-        for dst in self.rt_tbl.keys():
-            if self.rt_tbl[dst][4] == 0:
-                print(template.format(dst, self.rt_tbl[dst][0], self.rt_tbl[dst][1], time.time() - self.rt_tbl[dst][3], 0))
+        print("Router {0}".format(self.router_id))
+        print("{0:^15s} | {1:^12s} | {2:^10s} | {3:^12s} | {4:^20s}".format(
+            "Destination", "Next Hop", "Metric", "Time Out", 
+            "Garbage Collection").rstrip())
+        for dest in self.rt_tbl.keys():
+            if self.rt_tbl[dest][GARBAGECOLL] == 0:
+                print(template.format(dest, self.rt_tbl[dest][NEXTHOP], 
+                                      self.rt_tbl[dest][METRIC], 
+                                      time.time() - self.rt_tbl[dest][TIMEOUT],
+                                      0).rstrip())
             else:
-                print(template.format(dst, self.rt_tbl[dst][0], self.rt_tbl[dst][1], time.time() - self.rt_tbl[dst][3], time.time() - self.rt_tbl[dst][4]))
+                print(template.format(dest, self.rt_tbl[dest][NEXTHOP], 
+                                      self.rt_tbl[dest][METRIC], 
+                                      time.time() - self.rt_tbl[dest][TIMEOUT], 
+                                      time.time() - self.rt_tbl[dest][GARBAGECOLL])
+                      .rstrip())
     
+    #***************************************************************************
+    # Runs the router
+    #***************************************************************************    
     def run(self):
-        print("Running")
         self.send_update()
         while True:
             read_ready, write_ready, except_ready = select.select(self.input_socks, [], [])
             for sock in read_ready:
-                print("There is something received")
                 data, src = sock.recvfrom(512)
                 self.read_packet(data)
-                
+
+#***************************************************************************
+# Main function to start the router
+#***************************************************************************           
 def main():
                 
     if __name__ == "__main__":
-        if len(sys.argv) < 2:
-            sys.exit("No file given")
-     
-        router = Router(str(sys.argv[-1]))
-        router.run()
+        try:
+            if len(sys.argv) < 2:
+                print("No file given")
+                sys.exit(0)
+            
+            filename = str(sys.argv[-1])
+            if os.path.exists(filename):
+                router = Router(filename)
+                router.run()
+            else:
+                print("File does not exist")
+                sys.exit(0)
+            
+        except (KeyboardInterrupt, SystemExit):
+            sys.exit(0)         
 
 main()
-		
-  
     
-################################################################################
-    # test
-################################################################################
-    
-#y = Router('config_1.ini')
-
-
-
-#rting_table = {2: [2, 5, 0, 0, 0], 3: [2, 7, 0, 0, 0], 4: [6, 2, 0, 0, 0]}
-#print("Router ID: " + str(y.router_id))
-#print("Neighbour 2 metric: " + str(y.get_neighbour_metric(2)))
-#print("Neighbour 2 port: " + str(y.get_neighbour_port(2)))
-#x = Packet(1, 2, rting_table)
-#y.send_packet(x)
