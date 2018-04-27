@@ -5,4 +5,8 @@ router-id: x
 input-ports: xxxx yyyy
 output-ports: xxxx-x-x yyyy-y-y
 
-
+To run (two options):
+Download or clone repo. 
+Inside the repo, on run.sh, right-click -> properties -> permissions -> Allow executing file as program.
+1.) Open a terminal within the repo. Run command "./run.sh"
+2.) Double click run.sh in file explorer and select "Run"
