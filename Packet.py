@@ -1,5 +1,5 @@
 """RIP ROUTING ASSIGNMENT - COSC364
-Packet.py - Main code for virtual routers.
+Packet.py - code for packet struct and relevant functions.
 Authors: Shan Koo and Kate Chamberlin
 Due date: 27/04/2018, 11:59pm
 Date of last edit: 26/04/2018 """

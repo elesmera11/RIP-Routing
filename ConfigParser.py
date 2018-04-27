@@ -1,5 +1,5 @@
 """RIP ROUTING ASSIGNMENT - COSC364
-ConfigParser.py - Main code for virtual routers.
+ConfigParser.py - code for parsing from config files into the router.
 Authors: Shan Koo and Kate Chamberlin
 Due date: 27/04/2018, 11:59pm
 Date of last edit: 26/04/2018 """
