@@ -135,6 +135,7 @@ class Router:
     def send_update(self):
         period = float(random.randint(8, 12) / 10)
         thread = threading.Timer(period * PERIODIC_UPDATE, self.send_update)
+        self.print_routing_table()        
         thread.daemon = True
         thread.start()
         
@@ -218,7 +219,6 @@ class Router:
                         
         self.start_time_out(packet_src)
         self.trigger_update(packet_src)
-        self.print_routing_table()
         self.lock.release()
     
     #***************************************************************************
